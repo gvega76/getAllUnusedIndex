@@ -1,3 +1,15 @@
+// Extract the user and password from the provided connection string
+const inputURI = process.argv[2];
+const credentialsPattern = /\/\/([^:]+):([^@]+)@/;
+const match = inputURI.match(credentialsPattern);
+
+if (!match) {
+  throw new Error("Invalid connection string. Expected format: mongodb[+srv]://user:password@URI/database");
+}
+
+const user = match[1];
+const password = match[2];
+
 const servers = rs.status().members;
 const nodes = servers.length;
 const sysColls = [
@@ -15,9 +27,9 @@ const unusedIndexDict = {};
 
 // Iterate over each server/node in the replica set
 servers.forEach((server) => {
-  // Connect to the cluster; optionally, use the specific node by uncommenting below:
-  // const cluster = Mongo(`mongodb://usuario:password@${server.name}/admin`);
-  const cluster = Mongo(process.argv[2]);
+  // Construct a new connection string using the extracted credentials and current server hostname, tls=true for TLS connection
+  const connectionString = `mongodb://${user}:${password}@${server.name}/admin?tls=true`;
+  const cluster = Mongo(connectionString);
   cluster.setReadPref("nearest");
   const adminDB = cluster.getDB("admin");
 
@@ -40,7 +52,7 @@ servers.forEach((server) => {
 
       const currColl = currDB.getCollection(coll.name);
 
-      // Only process collections (coll.type undefined or "collection")
+      // Process only collections (coll.type undefined or "collection")
       if (!coll.type || coll.type === "collection") {
         const statsCursor = currColl.aggregate([
           { $indexStats: {} },
