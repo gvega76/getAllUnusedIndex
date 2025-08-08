@@ -31,6 +31,7 @@ const sysColls = [
 ];
 
 const unusedIndexDict = {};
+const indexSinceDict = {};
 const uptimes = [];
 
 // Iterate over each server/node in the replica set
@@ -98,6 +99,12 @@ servers.forEach((server) => {
           const ixStats = statsCursor.next();
           const key = `${dbName}.${coll.name}.${ixStats.name}`;
           unusedIndexDict[key] = (unusedIndexDict[key] || 0) + 1;
+          // Record the most recent 'since' value for this index
+          if (ixStats.accesses && ixStats.accesses.since) {
+            if (!indexSinceDict[key] || new Date(ixStats.accesses.since) > new Date(indexSinceDict[key])) {
+              indexSinceDict[key] = ixStats.accesses.since;
+            }
+          }
         }
       }
     });
@@ -119,10 +126,18 @@ if (uptimes.length > 0) {
   print(`Lowest server uptime: ${minUptimeSec.toFixed(0)} seconds (${minUptimeHours.toFixed(2)} hours, ${minUptimeDays.toFixed(2)} days)`);
 }
   // Output as CSV
-const csvRows = ["Database,Collection,IndexName"];
+const csvRows = ["Database,Collection,IndexName,MostRecentSince"];
 Object.keys(notUsed).forEach((key) => {
   const [db, coll, idx] = key.split('.');
-  csvRows.push(`${db},${coll},${idx}`);
+  let since = indexSinceDict[key] || '';
+  // Convert to ISO format if possible
+  if (since) {
+    const dateObj = new Date(since);
+    if (!isNaN(dateObj.getTime())) {
+      since = dateObj.toISOString();
+    }
+  }
+  csvRows.push(`${db},${coll},${idx},${since}`);
 });
 
 print(csvRows.join('\n'));
