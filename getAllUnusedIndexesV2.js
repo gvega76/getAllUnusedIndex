@@ -10,6 +10,13 @@ if (!match) {
 const user = match[1];
 const password = match[2];
 
+// Extract dbname from connection string if present
+let dbNameFromURI = null;
+const dbNameMatch = inputURI.match(/\/([^/?]+)(\?|$)/);
+if (dbNameMatch && dbNameMatch[1] && !dbNameMatch[1].includes('@')) {
+  dbNameFromURI = dbNameMatch[1];
+}
+
 const servers = rs.status().members;
 const nodes = servers.length;
 const sysColls = [
@@ -27,18 +34,26 @@ const unusedIndexDict = {};
 
 // Iterate over each server/node in the replica set
 servers.forEach((server) => {
-  // Construct a new connection string using the extracted credentials and current server hostname, tls=true for TLS connection
-  const connectionString = `mongodb://${user}:${password}@${server.name}/admin?tls=true`;
+  // Construct a new connection string using the extracted credentials and current server hostname
+  let connectionString;
+  if (inputURI.startsWith('mongodb+srv://')) {
+    connectionString = `mongodb://${user}:${password}@${server.name}/admin?directConnection=true&tls=true`;
+  } else {
+    connectionString = `mongodb://${user}:${password}@${server.name}/admin?directConnection=true`;
+  }
   const cluster = Mongo(connectionString);
   cluster.setReadPref("nearest");
   const adminDB = cluster.getDB("admin");
 
-  const { databases } = adminDB.adminCommand({ listDatabases: 1, nameOnly: true });
-
-  // Filter out admin, local and config databases
-  const appDBs = databases
-    .map((db) => db.name)
-    .filter((dbName) => !["admin", "local", "config"].includes(dbName));
+  let appDBs;
+  if (dbNameFromURI) {
+    appDBs = [dbNameFromURI];
+  } else {
+    const { databases } = adminDB.adminCommand({ listDatabases: 1, nameOnly: true });
+    appDBs = databases
+      .map((db) => db.name)
+      .filter((dbName) => !["admin", "local", "config"].includes(dbName));
+  }
 
   appDBs.forEach((dbName) => {
     const currDB = adminDB.getSiblingDB(dbName);
@@ -77,4 +92,11 @@ const notUsed = Object.keys(unusedIndexDict)
     return obj;
   }, {});
 
-console.table(notUsed);
+// Output as CSV
+const csvRows = ["Database,Collection,IndexName"];
+Object.keys(notUsed).forEach((key) => {
+  const [db, coll, idx] = key.split('.');
+  csvRows.push(`${db},${coll},${idx}`);
+});
+print(csvRows.join('\n'));
+
