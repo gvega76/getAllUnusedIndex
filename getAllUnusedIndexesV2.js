@@ -31,6 +31,7 @@ const sysColls = [
 ];
 
 const unusedIndexDict = {};
+const uptimes = [];
 
 // Iterate over each server/node in the replica set
 servers.forEach((server) => {
@@ -41,9 +42,27 @@ servers.forEach((server) => {
   } else {
     connectionString = `mongodb://${user}:${password}@${server.name}/admin?directConnection=true`;
   }
-  const cluster = Mongo(connectionString);
-  cluster.setReadPref("nearest");
-  const adminDB = cluster.getDB("admin");
+  let cluster;
+  let adminDB;
+  try {
+    cluster = Mongo(connectionString);
+    cluster.setReadPref("nearest");
+    adminDB = cluster.getDB("admin");
+  } catch (e) {
+    print(`Error connecting to node ${server.name}: ${e.message}`);
+    // Continue with the next node
+    return;
+  }
+
+  // Capture uptime for this node
+  try {
+    const serverStatus = adminDB.serverStatus();
+    if (serverStatus && typeof serverStatus.uptime === 'number') {
+      uptimes.push(serverStatus.uptime);
+    }
+  } catch (e) {
+    print(`Warning: Could not get server status from ${server.name}: ${e.message}`);
+  }
 
   let appDBs;
   if (dbNameFromURI) {
@@ -92,11 +111,20 @@ const notUsed = Object.keys(unusedIndexDict)
     return obj;
   }, {});
 
-// Output as CSV
+// Report lowest uptime
+if (uptimes.length > 0) {
+  const minUptimeSec = Math.min.apply(null, uptimes);
+  const minUptimeHours = minUptimeSec / 3600;
+  const minUptimeDays = minUptimeSec / 86400;
+  print(`Lowest server uptime: ${minUptimeSec.toFixed(0)} seconds (${minUptimeHours.toFixed(2)} hours, ${minUptimeDays.toFixed(2)} days)`);
+}
+  // Output as CSV
 const csvRows = ["Database,Collection,IndexName"];
 Object.keys(notUsed).forEach((key) => {
   const [db, coll, idx] = key.split('.');
   csvRows.push(`${db},${coll},${idx}`);
 });
+
 print(csvRows.join('\n'));
+
 
