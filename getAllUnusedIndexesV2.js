@@ -30,6 +30,9 @@ const sysColls = [
   "system.views",
 ];
 
+const exccludeColls = [ "orders2021",  "orders2022", "orders2023" ];
+
+
 const unusedIndexDict = {};
 const indexSinceDict = {};
 const uptimes = [];
@@ -82,6 +85,11 @@ servers.forEach((server) => {
     collInfos.forEach((coll) => {
       // Skip system collections and views
       if (sysColls.includes(coll.name) || coll.type === "view") {
+        return;
+      }
+
+      // Skip explicitly excluded collections
+      if (exccludeColls.includes(coll.name)) {
         return;
       }
 
