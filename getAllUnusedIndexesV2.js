@@ -134,18 +134,33 @@ if (uptimes.length > 0) {
   print(`Lowest server uptime: ${minUptimeSec.toFixed(0)} seconds (${minUptimeHours.toFixed(2)} hours, ${minUptimeDays.toFixed(2)} days)`);
 }
   // Output as CSV
+const csvEscape = (value) => {
+  const str = value === null || value === undefined ? "" : String(value);
+  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
 const csvRows = ["Database,Collection,IndexName,MostRecentSince"];
 Object.keys(notUsed).forEach((key) => {
-  const [db, coll, idx] = key.split('.');
+  const [db, coll, ...indexParts] = key.split('.');
+  const idx = indexParts.join('.');
   let since = indexSinceDict[key] || '';
-  // Convert to ISO format if possible
+
   if (since) {
     const dateObj = new Date(since);
     if (!isNaN(dateObj.getTime())) {
       since = dateObj.toISOString();
     }
   }
-  csvRows.push(`${db},${coll},${idx},${since}`);
+
+  csvRows.push([
+    csvEscape(db),
+    csvEscape(coll),
+    csvEscape(idx),
+    csvEscape(since),
+  ].join(','));
 });
 
 print(csvRows.join('\n'));
